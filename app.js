@@ -38,7 +38,8 @@ function meshBoxes(mesh) {
   const n = idx ? idx.count : p.count, get = (i) => (idx ? idx.getX(i) : i);
   const v = new THREE.Vector3(), out = [];
   const isBox = n % 36 === 0;
-  const per = isBox ? 36 : 3;
+  if (!isBox) return decorOrTri(mesh);
+  const per = 36;
   for (let k = 0; k < n; k += per) {
     const b = new THREE.Box3();
     const corners = new Set();
@@ -46,20 +47,30 @@ function meshBoxes(mesh) {
       v.fromBufferAttribute(p, get(j)).applyMatrix4(mesh.matrixWorld); b.expandByPoint(v);
       corners.add(v.toArray().map((c) => c.toFixed(3)).join(','));
     }
-    if (isBox && corners.size !== 8) return meshBoxesTri(mesh);
+    if (isBox && corners.size !== 8) return decorOrTri(mesh);
     out.push(b);
   }
   return out;
 }
+// objet décoratif (plante, cadre…) : une seule boîte englobante ; grand objet libre : boîte par triangle
+function decorOrTri(mesh) {
+  const b = new THREE.Box3().setFromObject(mesh), sz = b.getSize(new THREE.Vector3());
+  if (Math.max(sz.x, sz.y, sz.z) < 3) return [b];
+  return meshBoxesTri(mesh);
+}
 function meshBoxesTri(mesh) {
+  // grand maillage libre (ex. plantes réalisées) : triangles regroupés par cellules de 50 cm
   const g = mesh.geometry, p = g.attributes.position, idx = g.index, n = idx ? idx.count : p.count;
-  const v = new THREE.Vector3(), out = [];
+  const v = new THREE.Vector3(), c = new THREE.Vector3(), cells = new Map();
   for (let k = 0; k < n; k += 3) {
-    const b = new THREE.Box3();
-    for (let j = k; j < k + 3; j++) { v.fromBufferAttribute(p, idx ? idx.getX(j) : j).applyMatrix4(mesh.matrixWorld); b.expandByPoint(v); }
-    b.expandByScalar(0.01); out.push(b);
+    const tb = new THREE.Box3();
+    for (let j = k; j < k + 3; j++) { v.fromBufferAttribute(p, idx ? idx.getX(j) : j).applyMatrix4(mesh.matrixWorld); tb.expandByPoint(v); }
+    tb.getCenter(c);
+    const key = `${Math.floor(c.x / 0.5)},${Math.floor(c.y / 0.5)},${Math.floor(c.z / 0.5)}`;
+    const cb = cells.get(key);
+    if (cb) cb.union(tb); else cells.set(key, tb);
   }
-  return out;
+  return [...cells.values()];
 }
 const hps = []; // { name, el, node, spec }
 
