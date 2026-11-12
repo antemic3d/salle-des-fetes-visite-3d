@@ -227,10 +227,33 @@ let yaw = 0, pitch = 0, feet = 0;
 const pos = new THREE.Vector3();
 function applyCam() { camera.position.set(pos.x, feet + EYE, pos.z); camera.rotation.set(pitch, yaw, 0, 'YXZ'); }
 
+// grille spatiale de 1 m : chaque test ne parcourt que les boîtes voisines
+const CELL = 1;
+function makeGrid(boxes) {
+  const g = new Map();
+  for (const b of boxes) {
+    for (let i = Math.floor(b.min.x / CELL); i <= Math.floor(b.max.x / CELL); i++) {
+      for (let j = Math.floor(b.min.z / CELL); j <= Math.floor(b.max.z / CELL); j++) {
+        const k = i * 4096 + j; let a = g.get(k); if (!a) g.set(k, a = []); a.push(b);
+      }
+    }
+  }
+  return g;
+}
+function near(grid, x, z, r) {
+  const out = new Set();
+  for (let i = Math.floor((x - r) / CELL); i <= Math.floor((x + r) / CELL); i++) {
+    for (let j = Math.floor((z - r) / CELL); j <= Math.floor((z + r) / CELL); j++) {
+      const a = grid.get(i * 4096 + j); if (a) for (const b of a) out.add(b);
+    }
+  }
+  return out;
+}
+const solidGrid = makeGrid(solidBoxes), floorGrid = makeGrid(floorBoxes);
 // dessus du sol le plus haut sous (x,z) : plancher, marche ou scène (null hors du bâtiment)
 function floorAt(x, z) {
   let best = null;
-  for (const b of floorBoxes) {
+  for (const b of near(floorGrid, x, z, 0)) {
     if (x < b.min.x || x > b.max.x || z < b.min.z || z > b.max.z) continue;
     if (best === null || b.max.y > best) best = b.max.y;
   }
@@ -239,7 +262,7 @@ function floorAt(x, z) {
 // vrai si le visiteur (cylindre RADIUS, de fy+0.1 à fy+1.85) ne touche aucun solide visible
 function clearAt(x, z, fy) {
   const y0 = fy + 0.1, y1 = fy + 1.85, r2 = RADIUS * RADIUS;
-  for (const b of solidBoxes) {
+  for (const b of near(solidGrid, x, z, RADIUS)) {
     if (!b.mesh.visible) continue;
     if (b.max.y < y0 || b.min.y > y1) continue;
     const cx = Math.max(b.min.x, Math.min(x, b.max.x)), cz = Math.max(b.min.z, Math.min(z, b.max.z));
@@ -394,4 +417,4 @@ renderer.setAnimationLoop((t) => {
 });
 setMode('orbit');
 $('load').remove();
-window.__viewer = { get baked() { return baked; }, lmMode: LM_MODE, stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };
+window.__viewer = { look(p) { pitch = p; applyCam(); }, get baked() { return baked; }, lmMode: LM_MODE, stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };
