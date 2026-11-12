@@ -127,7 +127,9 @@ function setMode(m) {
   cross.hidden = m !== 'walk';
   if (m === 'orbit') {
     controls.enabled = true; camera.fov = initial.fov; camera.updateProjectionMatrix();
-    fly(initial.position, initial.target);
+    // écran en hauteur (téléphone) : on recule la caméra pour garder toute la salle dans le cadre
+    const k = Math.max(1, 1.5 / camera.aspect);
+    fly(initial.target.clone().add(initial.position.clone().sub(initial.target).multiplyScalar(k)), initial.target);
     help.innerHTML = '<b>Vue générale</b> · glisser : tourner · molette / pincer : zoom · clic droit : déplacer.<br>Cliquez sur une étiquette pour la fiche de la pièce.';
   } else {
     controls.enabled = false; anim = null; camera.fov = 70; camera.updateProjectionMatrix();
