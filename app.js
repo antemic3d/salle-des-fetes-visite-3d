@@ -3,6 +3,10 @@
 // ce fichier ajoute : vue générale, balade à hauteur d'œil avec collisions, mini-carte.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createRenderer, ProductStage } from './core/product-loader.js';
 
 
@@ -63,9 +67,11 @@ function meshBoxesTri(mesh) {
 }
 const hps = []; // { name, el, node, spec }
 
+let composer = null, ao = null;
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); }
 }
 addEventListener('resize', resize); resize();
 
@@ -80,7 +86,30 @@ try {
   $('load').textContent = 'Erreur de chargement : ' + e.message; throw e;
 }
 initial = stage.applyInitialView(camera, controls);
-camera.far = 400; camera.near = 0.05; camera.updateProjectionMatrix();
+camera.far = 400; camera.near = 0.3; camera.updateProjectionMatrix();
+
+// ---------------------------------------------------------------- ombres de contact
+// L'ombre de contact de product-loader est un plan unique posé sous le point le plus bas
+// de la scène : pour un bâtiment, il se retrouve sous la dalle, invisible. On la remplace
+// par une occlusion ambiante (GTAO) : ombre douce sous chaque meuble et dans les angles.
+// Réglages repris de Blender (panneau « Rendu de la visionneuse ») :
+//   Ombre de contact -> activée / désactivée
+//   Opacité des ombres au sol -> force de l'ombre (0 = aucune, 0,5 = normale, 1 = forte)
+//   Flou -> rayon de l'ombre (0 -> 40 cm, 2,5 -> 80 cm, 10 -> 2 m)
+const ground = stage.settings.ground;
+stage.contact.setOptions({ opacity: ground.opacity, blur: ground.blur, enabled: false });
+composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(stage.scene, camera));
+ao = new GTAOPass(stage.scene, camera, innerWidth, innerHeight);
+ao.blendIntensity = Math.min(1, ground.opacity * 2);
+ao.updateGtaoMaterial({ radius: 0.4 + ground.blur * 0.16, distanceExponent: 1.5, thickness: 10, scale: 0.5 + ground.opacity * 3, samples: 16 });
+ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+ao.enabled = !!ground.contactShadow;
+composer.addPass(ao);
+composer.addPass(new OutputPass());
+resize();
+$('tShadow').classList.toggle('on', ao.enabled);
+$('tShadow').onclick = () => { ao.enabled = !ao.enabled; $('tShadow').classList.toggle('on', ao.enabled); };
 
 for (const m of stage.meshes) {
   const n = m.userData.name ?? m.parent?.userData?.name ?? m.name;
@@ -99,11 +128,11 @@ for (const [name, h] of [...stage.hotspots].sort((a, b) => rank(a[1]) - rank(b[1
   const p = h.spec.props ?? {};
   const el = document.createElement('button');
   el.className = 'hp'; el.textContent = p.title ?? h.spec.id;
-  el.onclick = (ev) => { ev.stopPropagation(); openCard(p.title ?? h.spec.id, p.text ?? ''); };
+  el.onclick = (ev) => { ev.stopPropagation(); focusHotspot(hps.find((x) => x.name === name)); };
   $('hotspots').appendChild(el);
   hps.push({ name, el, node: h.node, title: p.title ?? h.spec.id, text: p.text ?? '' });
   const b = document.createElement('button');
-  b.textContent = p.title ?? h.spec.id; b.onclick = () => goRoom(hps.find((x) => x.name === name));
+  b.textContent = p.title ?? h.spec.id; b.onclick = () => focusHotspot(hps.find((x) => x.name === name));
   $('rooms').appendChild(b);
 }
 function openCard(t, txt) { card.querySelector('h2').textContent = t; card.querySelector('p').textContent = txt; card.hidden = false; }
@@ -124,15 +153,17 @@ function setMode(m) {
   hide.orbit.forEach((o) => { o.visible = m === 'walk'; });
   cross.hidden = m !== 'walk';
   if (m === 'orbit') {
-    controls.enabled = true; camera.fov = initial.fov; camera.updateProjectionMatrix();
+    controls.enabled = true; camera.fov = initial.fov; camera.near = 0.3; camera.updateProjectionMatrix();
     // écran en hauteur (téléphone) : on recule la caméra pour garder toute la salle dans le cadre
     const k = Math.max(1, 1.5 / camera.aspect);
     fly(initial.target.clone().add(initial.position.clone().sub(initial.target).multiplyScalar(k)), initial.target);
     help.innerHTML = '<b>Vue générale</b> · glisser : tourner · molette / pincer : zoom · clic droit : déplacer.<br>Cliquez sur une étiquette pour la fiche de la pièce.';
   } else {
-    controls.enabled = false; anim = null; camera.fov = 70; camera.updateProjectionMatrix();
-    const start = hps.find((h) => /Entr/.test(h.title)) ?? hps[0];
-    goRoom(start, 0);
+    controls.enabled = false; anim = null; camera.fov = 70; camera.near = 0.05; camera.updateProjectionMatrix();
+    // la balade démarre dans la dernière zone choisie (menu, étiquette ou plan), sinon à l'entrée
+    if (lastPick?.h) goRoom(lastPick.h);
+    else if (lastPick) { const s = findFree(lastPick.x, lastPick.z); if (s) placeAt(s, openestYaw(s)); else goRoom(entrance(), 0); }
+    else goRoom(entrance(), 0);
     help.innerHTML = '<b>Balade</b> · glisser : regarder · clic au sol : y aller · ZQSD / flèches : marcher.<br>Les murs sont infranchissables : passez par les portes.';
   }
 }
@@ -147,15 +178,27 @@ function fly(pos, target) {
     if (k >= 1) anim = null;
   };
 }
+let lastPick = null; // { h } ou { x, z } : dernière zone choisie
+const entrance = () => hps.find((h) => /Entr/.test(h.title)) ?? hps[0];
+const isBig = (h) => /principale/i.test(h.title);
+// clic sur un point d'intérêt (étiquette ou menu) : la caméra se place sur ce point
+function focusHotspot(h) {
+  if (!h) return;
+  lastPick = { h };
+  if (mode === 'walk') { goRoom(h); return; }
+  const p = h.node.getWorldPosition(new THREE.Vector3());
+  const target = new THREE.Vector3(p.x, Math.max(0, p.y - 1.2), p.z);
+  // garde l'orientation actuelle autour de la cible, avec une plongée d'au moins 40°
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  const flat = Math.hypot(dir.x, dir.z) || 1, minY = Math.sin(THREE.MathUtils.degToRad(40));
+  if (dir.y < minY) { const k = Math.cos(Math.asin(minY)) / flat; dir.set(dir.x * k, minY, dir.z * k); }
+  fly(target.clone().addScaledVector(dir, isBig(h) ? 24 : 11), target);
+  openCard(h.title, h.text);
+}
 function goRoom(h, yawOverride) {
   if (!h) return;
   const p = h.node.getWorldPosition(new THREE.Vector3());
-  if (mode === 'orbit') {
-    const tgt = new THREE.Vector3(p.x, 0, p.z);
-    const big = /principale/i.test(h.title);
-    fly(tgt.clone().add(new THREE.Vector3(0.5, 1, 0.75).normalize().multiplyScalar(big ? 26 : 13)), tgt);
-    openCard(h.title, h.text);
-  } else {
+  if (mode === 'orbit') { focusHotspot(h); return; } else {
     let x = p.x, z = p.z;
     if (/principale/i.test(h.title)) x = 26.8;           // fond de salle, face à la scène
     const spot = findFree(x, z, p.y);
@@ -281,6 +324,7 @@ $('map').addEventListener('click', (e) => {
   const cx = (e.clientX - r.left) / r.width * 740, cy = (e.clientY - r.top) / r.height * 540;
   const x = (cx - OX) / S / 100, z = (cy - OY) / S / 100;
   if (mode === 'orbit') {
+    lastPick = { x, z };
     const t = new THREE.Vector3(x, 0, z);
     fly(t.clone().add(new THREE.Vector3(0.5, 1, 0.75).normalize().multiplyScalar(14)), t);
   } else {
@@ -334,8 +378,8 @@ renderer.setAnimationLoop((t) => {
   updateHotspots(t);
   stage.update(dt);
   drawMap();
-  renderer.render(stage.scene, camera);
+  if (ao.enabled) composer.render(dt); else renderer.render(stage.scene, camera);
 });
 setMode('orbit');
 $('load').remove();
-window.__viewer = { stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };
+window.__viewer = { stage, solidBoxes, floorBoxes, get composer() { return composer; }, get ao() { return ao; }, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };
