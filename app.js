@@ -3,10 +3,6 @@
 // ce fichier ajoute : vue générale, balade à hauteur d'œil avec collisions, mini-carte.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createRenderer, ProductStage } from './core/product-loader.js';
 
 
@@ -67,11 +63,9 @@ function meshBoxesTri(mesh) {
 }
 const hps = []; // { name, el, node, spec }
 
-let composer = null, ao = null;
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-  if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); }
 }
 addEventListener('resize', resize); resize();
 
@@ -88,51 +82,46 @@ try {
 initial = stage.applyInitialView(camera, controls);
 camera.far = 400; camera.near = 0.3; camera.updateProjectionMatrix();
 
-// ---------------------------------------------------------------- ombres de contact
-// L'ombre de contact de product-loader est un plan unique posé sous le point le plus bas
-// de la scène : pour un bâtiment, il se retrouve sous la dalle, invisible. On la remplace
-// par une occlusion ambiante (GTAO) : ombre douce sous chaque meuble et dans les angles.
-// Réglages repris de Blender (panneau « Rendu de la visionneuse ») :
-//   Ombre de contact -> activée / désactivée (désactivée d'office si le GLB contient des ombres cuites)
-//   Opacité des ombres au sol -> force de l'ombre (0 = aucune, 0,5 = normale, 1 = forte)
-//   Flou -> rayon de l'ombre (0 -> 40 cm, 2,5 -> 80 cm, 10 -> 2 m)
-const ground = stage.settings.ground;
-
-// Occlusion cuite dans Blender (add-on Publication GitHub) : occlusionTexture glTF sur TEXCOORD_1.
-// three.js ne l'applique qu'à la lumière indirecte ; ici les plafonniers (lumière directe)
-// éclairent l'essentiel, donc on l'applique aussi au direct pour que les ombres se voient.
-let bakedAO = 0;
+// ---------------------------------------------------------------- éclairage cuit
+// L'add-on Blender « Publication GitHub » cuit la lumière avec Cycles et l'écrit dans le GLB :
+//   occlusionTexture (TEXCOORD_1) de chaque matériau = lightmap encodée v = (L / lm_scale)^(1/lm_gamma)
+//   empty « __lightmap_info » (extras) = { lm_mode: 'LIGHT' | 'AO', lm_scale, lm_gamma }
+// LIGHT : la lumière diffuse vient uniquement de la lightmap ; les lampes temps réel ne donnent plus que les reflets.
+// AO    : la texture est une occlusion, appliquée aussi à la lumière directe.
+// Aucune ombre calculée en temps réel : l'éclairage ne se règle que dans Blender.
+renderer.shadowMap.enabled = false;
+stage.scene.traverse((o) => { if (o.isLight) o.castShadow = false; });
+stage.contact.setOptions({ opacity: 0, blur: 0, enabled: false });
+let lmInfo = null;
+stage.root.traverse((o) => { if (o.userData?.lm_mode && !lmInfo) lmInfo = o.userData; });
+const LM_MODE = lmInfo?.lm_mode ?? 'AO';
+const LM_SCALE = Number(lmInfo?.lm_scale ?? 1).toFixed(6);
+const LM_GAMMA = Number(lmInfo?.lm_gamma ?? 2.2).toFixed(4);
+let baked = 0;
 stage.scene.traverse((o) => {
   if (!o.isMesh) return;
   for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
-    if (!m.aoMap || m.userData.__aoDirect) continue;
-    m.userData.__aoDirect = true;
-    m.aoMapIntensity = Math.min(1.5, ground.opacity * 2);
-    m.onBeforeCompile = (sh) => {
-      sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', `#include <aomap_fragment>
-#ifdef USE_AOMAP
+    if (!m.aoMap || m.userData.__baked) continue;
+    m.userData.__baked = true;
+    const inject = LM_MODE === 'LIGHT'
+      ? `#ifdef USE_AOMAP
+  vec3 lmL = pow( texture2D( aoMap, vAoMapUv ).rgb, vec3( ${LM_GAMMA} ) ) * ${LM_SCALE};
+  reflectedLight.directDiffuse = vec3( 0.0 );          // lumière diffuse : uniquement la cuisson
+  reflectedLight.indirectDiffuse = diffuseColor.rgb * lmL;
+  // reflets (directSpecular) conservés : sans eux, les métaux (inox) sortiraient noirs
+#endif`
+      : `#ifdef USE_AOMAP
   reflectedLight.directDiffuse *= ambientOcclusion;
   reflectedLight.directSpecular *= ambientOcclusion;
-#endif`);
+#endif`;
+    m.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', `#include <aomap_fragment>\n${inject}`);
     };
-    m.customProgramCacheKey = () => 'aoDirect';
+    m.customProgramCacheKey = () => `baked-${LM_MODE}`;
     m.needsUpdate = true;
-    bakedAO++;
+    baked++;
   }
 });
-stage.contact.setOptions({ opacity: ground.opacity, blur: ground.blur, enabled: false });
-composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(stage.scene, camera));
-ao = new GTAOPass(stage.scene, camera, innerWidth, innerHeight);
-ao.blendIntensity = Math.min(1, ground.opacity * 2);
-ao.updateGtaoMaterial({ radius: 0.4 + ground.blur * 0.16, distanceExponent: 1.5, thickness: 10, scale: 0.5 + ground.opacity * 3, samples: 16 });
-ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
-ao.enabled = !!ground.contactShadow && bakedAO === 0;  // ombres cuites présentes : l'AO écran devient optionnelle
-composer.addPass(ao);
-composer.addPass(new OutputPass());
-resize();
-$('tShadow').classList.toggle('on', ao.enabled);
-$('tShadow').onclick = () => { ao.enabled = !ao.enabled; $('tShadow').classList.toggle('on', ao.enabled); };
 
 for (const m of stage.meshes) {
   const n = m.userData.name ?? m.parent?.userData?.name ?? m.name;
@@ -401,8 +390,8 @@ renderer.setAnimationLoop((t) => {
   updateHotspots(t);
   stage.update(dt);
   drawMap();
-  if (ao.enabled) composer.render(dt); else renderer.render(stage.scene, camera);
+  renderer.render(stage.scene, camera);
 });
 setMode('orbit');
 $('load').remove();
-window.__viewer = { get bakedAO() { return bakedAO; }, stage, solidBoxes, floorBoxes, get composer() { return composer; }, get ao() { return ao; }, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };
+window.__viewer = { get baked() { return baked; }, lmMode: LM_MODE, stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };

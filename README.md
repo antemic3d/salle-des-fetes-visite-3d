@@ -30,9 +30,11 @@ Visionneuse web de la salle des fêtes, modélisée dans Blender d'après le pla
 
 Dépendance chargée depuis le CDN jsDelivr : three.js r186.
 
-## Ombres cuites
+## Éclairage cuit
 
-L'add-on Blender « Publication GitHub » (≥ 0.3) cuit l'occlusion ambiante de chaque objet avec Cycles
-avant chaque publication et l'écrit comme `occlusionTexture` glTF (UV « LightmapUV », TEXCOORD_1).
-La visionneuse l'applique à toute la lumière (directe comprise). Sans ombres cuites, elle se rabat sur
-une occlusion calculée à l'écran (GTAO, bouton « Ombres »).
+L'add-on Blender « Publication GitHub » (≥ 0.4) cuit l'éclairage avec Cycles avant chaque publication
+(mode « Éclairage complet » : soleil, lampes, ciel, rebonds ; ou « Ombres de contact seules »).
+Le résultat est écrit dans le GLB web comme `occlusionTexture` glTF (UV « LightmapUV », TEXCOORD_1),
+encodé `v = (L / lm_scale)^(1/lm_gamma)` ; l'empty `__lightmap_info` porte `lm_mode`, `lm_scale`, `lm_gamma`.
+La visionneuse remplace la lumière diffuse temps réel par la lumière cuite et ne calcule aucune ombre :
+l'éclairage se règle uniquement dans Blender.
