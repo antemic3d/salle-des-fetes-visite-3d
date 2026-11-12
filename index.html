@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Salle des fêtes – Visite virtuelle 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1d1f24;--panel:rgba(255,255,255,.93);--acc:#9e1b22}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:#dbe3ea}
+#view{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block;outline:none}
+header{position:fixed;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none;z-index:3}
+header>*{pointer-events:auto}
+h1{font-size:15px;font-weight:600;margin:0;padding:9px 14px;background:var(--panel);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.seg{display:flex;background:var(--panel);border-radius:10px;padding:3px;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.seg button{border:0;background:none;padding:7px 13px;border-radius:8px;font:600 13px Inter,sans-serif;cursor:pointer;color:var(--ink)}
+.seg button.on{background:var(--acc);color:#fff}
+#rooms{position:fixed;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100% - 300px);z-index:3}
+#rooms button{border:0;background:var(--panel);padding:7px 11px;border-radius:999px;font:13px Inter,sans-serif;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,.12);color:var(--ink)}
+#rooms button:hover{background:#fff;color:var(--acc)}
+#map{position:fixed;right:12px;bottom:12px;width:270px;background:var(--panel);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.15);padding:6px;cursor:crosshair;z-index:3}
+#map canvas{width:100%;display:block;border-radius:6px}
+#help{position:fixed;top:64px;left:12px;font-size:12.5px;background:var(--panel);padding:8px 12px;border-radius:8px;max-width:340px;line-height:1.45;box-shadow:0 1px 6px rgba(0,0,0,.1);z-index:3}
+#hotspots{position:fixed;inset:0;pointer-events:none;z-index:2}
+.hp{position:absolute;transform:translate(-50%,-50%);background:rgba(29,31,36,.84);color:#fff;font-size:12.5px;padding:5px 10px;border-radius:999px;white-space:nowrap;pointer-events:auto;cursor:pointer;border:0;font-family:inherit;transition:opacity .2s}
+.hp::before{content:"i";display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;background:#fff;color:#1d1f24;font-weight:600;font-size:10px;margin-right:6px;vertical-align:-2px}
+#card{position:fixed;top:64px;right:12px;width:300px;background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 6px 24px rgba(0,0,0,.18);z-index:4}
+#card h2{margin:0 0 6px;font-size:16px}#card p{margin:0;font-size:13.5px;line-height:1.5;color:#3a3d44}
+#card .close{position:absolute;top:6px;right:8px;border:0;background:none;font-size:20px;cursor:pointer;color:#666}
+#cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:rgba(255,255,255,.8);box-shadow:0 0 0 1px rgba(0,0,0,.3);z-index:2;pointer-events:none}
+#load{position:fixed;inset:0;display:grid;place-items:center;background:#dbe3ea;font-weight:600;z-index:9}
+@media (max-width:720px){#map{width:150px}#rooms{max-width:calc(100% - 175px)}#help{display:none}h1{display:none}#card{left:12px;width:auto}}
+</style>
+<script type="importmap">
+{"imports":{
+ "three":"https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+ "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<canvas id="view" tabindex="0"></canvas>
+<div id="load">Chargement de la salle…</div>
+<header>
+  <h1>Salle des fêtes · visite 3D</h1>
+  <div class="seg"><button id="mOrbit" class="on">Vue générale</button><button id="mWalk">Balade</button></div>
+  <div class="seg"><button id="tFurn" class="on">Mobilier</button></div>
+</header>
+<div id="help"></div>
+<div id="hotspots"></div>
+<aside id="card" hidden><button class="close" aria-label="Fermer">×</button><h2></h2><p></p></aside>
+<div id="cross" hidden></div>
+<div id="rooms"></div>
+<div id="map" title="Cliquez pour vous déplacer"><canvas id="mapc" width="740" height="540"></canvas></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
