@@ -13,14 +13,14 @@ Visionneuse web de la salle des fêtes, modélisée dans Blender d'après le pla
 | `app.js` | navigation (vue générale, balade, collisions, mini-carte) |
 | `core/product-loader.js` | module de référence de l'add-on (inchangé) |
 | `salle_des_fetes.glb` | scène exportée depuis Blender (« Exporter le GLB final ») |
-| `scene-data.js` | copie base64 du GLB, utilisée si le serveur ne sert pas les `.glb` |
+| `version.txt` | identifiant de la dernière publication (anti-cache) |
 | `plan.jpg` | plan utilisé par la mini-carte |
 
 ## Mettre à jour la scène
 
 1. Modifier `salle_des_fetes.blend` dans Blender.
 2. Panneau Aperçu Web > « Exporter le GLB final » vers `salle_des_fetes.glb`.
-3. Remplacer le fichier dans ce dépôt et pousser. `scene-data.js` peut être supprimé si GitHub Pages sert le `.glb` (cas normal).
+3. Remplacer le fichier dans ce dépôt et pousser.
 
 ## Intégrer sur un site
 

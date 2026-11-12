@@ -71,13 +71,11 @@ addEventListener('resize', resize); resize();
 
 // ---------------------------------------------------------------- chargement
 try {
-  // GLB exporté par l'add-on ; repli sur la copie base64 (scene-data.js) si l'hébergeur ne sert pas les .glb
-  try {
-    await stage.load('salle_des_fetes.glb');
-  } catch {
-    const { default: b64 } = await import('./scene-data.js');
-    await stage.load(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer);
-  }
+  // version.txt est réécrit à chaque publication depuis Blender : il force le rechargement du GLB
+  // (sinon navigateur et GitHub Pages peuvent servir l'ancien fichier pendant ~10 min)
+  let v = '';
+  try { v = (await fetch('version.txt', { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''))).trim(); } catch {}
+  await stage.load('salle_des_fetes.glb' + (v ? '?v=' + encodeURIComponent(v) : ''));
 } catch (e) {
   $('load').textContent = 'Erreur de chargement : ' + e.message; throw e;
 }
