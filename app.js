@@ -27,7 +27,7 @@ const $ = (id) => document.getElementById(id);
 const help = $('help'), card = $('card'), cross = $('cross');
 let mode = 'orbit', initial = null;
 const hide = { orbit: [], always: [] }; // objets masqués en vue générale
-let furniture = [], solids = [], floors = [];
+let solids = [], floors = [];
 const solidBoxes = [], floorBoxes = [];
 // La salle est faite de boîtes alignées sur les axes : l'export glTF garde
 // 12 triangles consécutifs par boîte. On en tire des AABB exactes pour les collisions.
@@ -138,7 +138,6 @@ for (const m of stage.meshes) {
   const n = m.userData.name ?? m.parent?.userData?.name ?? m.name;
   if (/^(Plafond|Luminaires|Toiture)/.test(n)) { hide.orbit.push(m); continue; }
   if (/^(Sol_|Escaliers)/.test(n)) { floors.push(m); floorBoxes.push(...meshBoxes(m)); continue; }
-  if (/^(Chaises|Tables|Bar|Cuisine|Sanitaires|Vestiaire|Rayonnages|Pupitre|Cabines)/.test(n)) furniture.push(m);
   solids.push(m);
   for (const b of meshBoxes(m)) { b.mesh = m; solidBoxes.push(b); }
 }
@@ -164,11 +163,6 @@ card.querySelector('.close').onclick = () => { card.hidden = true; };
 // ---------------------------------------------------------------- modes
 $('mOrbit').onclick = () => setMode('orbit');
 $('mWalk').onclick = () => setMode('walk');
-$('tFurn').onclick = () => {
-  const on = !$('tFurn').classList.contains('on'); $('tFurn').classList.toggle('on', on);
-  furniture.forEach((m) => { m.visible = on; });
-  stage.contactDirty = true;
-};
 
 function setMode(m) {
   mode = m;
