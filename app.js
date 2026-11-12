@@ -93,10 +93,33 @@ camera.far = 400; camera.near = 0.3; camera.updateProjectionMatrix();
 // de la scène : pour un bâtiment, il se retrouve sous la dalle, invisible. On la remplace
 // par une occlusion ambiante (GTAO) : ombre douce sous chaque meuble et dans les angles.
 // Réglages repris de Blender (panneau « Rendu de la visionneuse ») :
-//   Ombre de contact -> activée / désactivée
+//   Ombre de contact -> activée / désactivée (désactivée d'office si le GLB contient des ombres cuites)
 //   Opacité des ombres au sol -> force de l'ombre (0 = aucune, 0,5 = normale, 1 = forte)
 //   Flou -> rayon de l'ombre (0 -> 40 cm, 2,5 -> 80 cm, 10 -> 2 m)
 const ground = stage.settings.ground;
+
+// Occlusion cuite dans Blender (add-on Publication GitHub) : occlusionTexture glTF sur TEXCOORD_1.
+// three.js ne l'applique qu'à la lumière indirecte ; ici les plafonniers (lumière directe)
+// éclairent l'essentiel, donc on l'applique aussi au direct pour que les ombres se voient.
+let bakedAO = 0;
+stage.scene.traverse((o) => {
+  if (!o.isMesh) return;
+  for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+    if (!m.aoMap || m.userData.__aoDirect) continue;
+    m.userData.__aoDirect = true;
+    m.aoMapIntensity = Math.min(1.5, ground.opacity * 2);
+    m.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', `#include <aomap_fragment>
+#ifdef USE_AOMAP
+  reflectedLight.directDiffuse *= ambientOcclusion;
+  reflectedLight.directSpecular *= ambientOcclusion;
+#endif`);
+    };
+    m.customProgramCacheKey = () => 'aoDirect';
+    m.needsUpdate = true;
+    bakedAO++;
+  }
+});
 stage.contact.setOptions({ opacity: ground.opacity, blur: ground.blur, enabled: false });
 composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(stage.scene, camera));
@@ -104,7 +127,7 @@ ao = new GTAOPass(stage.scene, camera, innerWidth, innerHeight);
 ao.blendIntensity = Math.min(1, ground.opacity * 2);
 ao.updateGtaoMaterial({ radius: 0.4 + ground.blur * 0.16, distanceExponent: 1.5, thickness: 10, scale: 0.5 + ground.opacity * 3, samples: 16 });
 ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
-ao.enabled = !!ground.contactShadow;
+ao.enabled = !!ground.contactShadow && bakedAO === 0;  // ombres cuites présentes : l'AO écran devient optionnelle
 composer.addPass(ao);
 composer.addPass(new OutputPass());
 resize();
@@ -382,4 +405,4 @@ renderer.setAnimationLoop((t) => {
 });
 setMode('orbit');
 $('load').remove();
-window.__viewer = { stage, solidBoxes, floorBoxes, get composer() { return composer; }, get ao() { return ao; }, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };
+window.__viewer = { get bakedAO() { return bakedAO; }, stage, solidBoxes, floorBoxes, get composer() { return composer; }, get ao() { return ao; }, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };

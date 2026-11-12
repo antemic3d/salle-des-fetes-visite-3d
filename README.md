@@ -29,3 +29,10 @@ Visionneuse web de la salle des fêtes, modélisée dans Blender d'après le pla
 ```
 
 Dépendance chargée depuis le CDN jsDelivr : three.js r186.
+
+## Ombres cuites
+
+L'add-on Blender « Publication GitHub » (≥ 0.3) cuit l'occlusion ambiante de chaque objet avec Cycles
+avant chaque publication et l'écrit comme `occlusionTexture` glTF (UV « LightmapUV », TEXCOORD_1).
+La visionneuse l'applique à toute la lumière (directe comprise). Sans ombres cuites, elle se rabat sur
+une occlusion calculée à l'écran (GTAO, bouton « Ombres »).
