@@ -93,6 +93,7 @@ addEventListener('resize', resize); resize();
 try {
   // le GLB est déjà en téléchargement depuis index.html (en parallèle de three.js)
   const buf = window.__glb ? await window.__glb : null;
+  performance.mark('visite:glb-telecharge');
   $('loadmsg').textContent = 'Préparation de la visite';
   if (buf) await stage.load(buf);
   else {
@@ -103,6 +104,7 @@ try {
 } catch (e) {
   $('loadmsg').textContent = 'Erreur de chargement : ' + e.message; throw e;
 }
+performance.mark('visite:glb-decode');
 initial = stage.applyInitialView(camera, controls);
 camera.far = 400; camera.near = 0.3; camera.updateProjectionMatrix();
 
@@ -163,6 +165,7 @@ for (const m of stage.meshes) {
   for (const b of meshBoxes(m)) { b.mesh = m; solidBoxes.push(b); }
 }
 
+performance.mark('visite:collisions');
 // points d'intérêt : convention HP_Informations_<Pièce>, hp_title / hp_text
 const ORDER = ['Entree', 'Salle_principale', 'Scene', 'Hall_du_bar', 'Cuisine_relais', 'Salle_annexe', 'Vestiaire', 'Sanitaires', 'Loges', 'Depot'];
 const rank = (h) => { const i = ORDER.indexOf(h.spec.id); return i < 0 ? 99 : i; };
@@ -405,6 +408,7 @@ const base = (() => {
   g.fillStyle = `rgba(${C.green},.9)`; solidBoxes.filter((b) => /^Vitrages/.test(name(b))).forEach(rect);
   return { cv, bb, ppm, W, H };
 })();
+performance.mark('visite:radar');
 const zones = hps.map((h) => { const p = h.node.getWorldPosition(new THREE.Vector3()); return { t: h.title, x: p.x, z: p.z }; });
 function sizeRadar() {
   const css = mapc.clientWidth || 220, dpr = Math.min(devicePixelRatio || 1, 2);
@@ -580,6 +584,8 @@ renderer.setAnimationLoop((t) => {
 });
 setMode('orbit');
 // shaders compilés en arrière-plan avant le premier affichage (pas de gel à l'apparition)
+performance.mark('visite:avant-shaders');
 try { await renderer.compileAsync(stage.scene, camera); } catch {}
+performance.mark('visite:pret');
 $('load').remove();
 window.__viewer = { look(p) { pitch = p; applyCam(); }, get baked() { return baked; }, lmMode: LM_MODE, stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, floorAt, clearAt, get feet() { return feet; }, setMode };
