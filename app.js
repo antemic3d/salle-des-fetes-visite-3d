@@ -162,6 +162,9 @@ stage.scene.traverse((o) => {
 for (const m of stage.meshes) {
   const n = m.userData.name ?? m.parent?.userData?.name ?? m.name;
   if (/^(Plafond|Luminaires|Toiture)/.test(n)) { hide.orbit.push(m); continue; }
+  // abords (enrobé, pelouse, bordure) : visibles, ni sol ni obstacle -> non praticables.
+  // Seuls les sols nommés « Sol_* » (dont le parvis d'entrée) sont accessibles au visiteur.
+  if (/^Exterieur/.test(n)) continue;
   if (/^(Sol_|Escaliers)/.test(n)) {
     floors.push(m);
     for (const b of meshBoxes(m)) {
@@ -177,7 +180,7 @@ for (const m of stage.meshes) {
 
 performance.mark('visite:collisions');
 // points d'intérêt : convention HP_Informations_<Pièce>, hp_title / hp_text
-const ORDER = ['Entree', 'Salle_principale', 'Scene', 'Hall_du_bar', 'Cuisine_relais', 'Salle_annexe', 'Vestiaire', 'Sanitaires', 'Loges', 'Depot'];
+const ORDER = ['Parvis', 'Entree', 'Salle_principale', 'Scene', 'Hall_du_bar', 'Cuisine_relais', 'Salle_annexe', 'Vestiaire', 'Sanitaires', 'Loges', 'Depot'];
 const rank = (h) => { const i = ORDER.indexOf(h.spec.id); return i < 0 ? 99 : i; };
 for (const [name, h] of [...stage.hotspots].sort((a, b) => rank(a[1]) - rank(b[1]))) {
   if (h.spec.type !== 'Informations') continue;
