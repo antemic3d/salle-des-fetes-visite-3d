@@ -209,7 +209,7 @@ function focusHotspot(h) {
   const dir = camera.position.clone().sub(controls.target).normalize();
   const flat = Math.hypot(dir.x, dir.z) || 1, minY = Math.sin(THREE.MathUtils.degToRad(40));
   if (dir.y < minY) { const k = Math.cos(Math.asin(minY)) / flat; dir.set(dir.x * k, minY, dir.z * k); }
-  fly(target.clone().addScaledVector(dir, isBig(h) ? 24 : 11), target);
+  fly(target.clone().addScaledVector(dir, isBig(h) ? 24 : 14), target);
   openCard(h.title, h.text);
 }
 function goRoom(h, yawOverride) {
@@ -356,8 +356,8 @@ function drawMap() {
   const p = mode === 'walk' ? camera.position : controls.target;
   const [px, py] = toMap(p.x, p.z);
   const f = new THREE.Vector3(); camera.getWorldDirection(f); const a = Math.atan2(f.z, f.x);
-  mx.fillStyle = 'rgba(158,27,34,.25)'; mx.beginPath(); mx.moveTo(px, py); mx.arc(px, py, 64, a - 0.6, a + 0.6); mx.closePath(); mx.fill();
-  mx.fillStyle = '#9e1b22'; mx.beginPath(); mx.arc(px, py, 9, 0, 7); mx.fill(); mx.strokeStyle = '#fff'; mx.lineWidth = 3; mx.stroke();
+  mx.fillStyle = 'rgba(224,14,69,.28)'; mx.beginPath(); mx.moveTo(px, py); mx.arc(px, py, 64, a - 0.6, a + 0.6); mx.closePath(); mx.fill();
+  mx.fillStyle = '#E00E45'; mx.beginPath(); mx.arc(px, py, 9, 0, 7); mx.fill(); mx.strokeStyle = '#fff'; mx.lineWidth = 3; mx.stroke();
 }
 $('map').addEventListener('click', (e) => {
   const r = mapc.getBoundingClientRect();
