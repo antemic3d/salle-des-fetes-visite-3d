@@ -7,7 +7,7 @@ import { createRenderer, ProductStage } from './core/product-loader.js';
 
 
 const EYE = 1.65;          // hauteur des yeux (m)
-const RADIUS = 0.35;       // rayon du visiteur (m)
+const RADIUS = 0.25;       // rayon du visiteur (m) : 50 cm de large, passe les portes de 90 cm avec 20 cm de jeu
 const STEP_UP = 0.35;      // marche franchissable (m)
 const SPEED = 2.4;         // m/s
 const SUBSTEP = 0.08;      // déplacement max par sous-pas (anti-traversée)
@@ -274,9 +274,18 @@ function clearAt(x, z, fy) {
   }
   return true;
 }
-// déplacement élémentaire (≤ SUBSTEP < 2×RADIUS : aucune paroi ne peut être sautée), glissement le long des murs
+// déplacement élémentaire (≤ SUBSTEP < 2×RADIUS : aucune paroi ne peut être sautée).
+// Tolérance de passage : si le pas est bloqué, on glisse le long du mur, puis on essaie des
+// directions inclinées (jusqu'à 70°) : le visiteur contourne les angles et s'engage dans les portes
+// même en arrivant décalé ou de biais.
+const STEER = [25, -25, 45, -45, 70, -70].map((d) => d * Math.PI / 180);
 function tryMove(dx, dz) {
-  for (const [mx, mz] of [[dx, dz], [dx, 0], [0, dz]]) {
+  const tries = [[dx, dz], [dx, 0], [0, dz]];
+  for (const a of STEER) {
+    const c = Math.cos(a), s = Math.sin(a);
+    tries.push([dx * c - dz * s, dx * s + dz * c]);
+  }
+  for (const [mx, mz] of tries) {
     if (!mx && !mz) continue;
     const nx = pos.x + mx, nz = pos.z + mz;
     const fy = floorAt(nx, nz);
