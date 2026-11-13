@@ -11,8 +11,6 @@ const RADIUS = 0.35;       // rayon du visiteur (m)
 const STEP_UP = 0.35;      // marche franchissable (m)
 const SPEED = 2.4;         // m/s
 const SUBSTEP = 0.08;      // déplacement max par sous-pas (anti-traversée)
-// mini-carte : cm du plan -> pixels de plan.jpg
-const OX = 23, OY = 18, S = 0.2455;
 
 const canvas = document.getElementById('view');
 const renderer = createRenderer(canvas);
@@ -137,7 +135,7 @@ stage.scene.traverse((o) => {
 for (const m of stage.meshes) {
   const n = m.userData.name ?? m.parent?.userData?.name ?? m.name;
   if (/^(Plafond|Luminaires|Toiture)/.test(n)) { hide.orbit.push(m); continue; }
-  if (/^(Sol_|Escaliers)/.test(n)) { floors.push(m); floorBoxes.push(...meshBoxes(m)); continue; }
+  if (/^(Sol_|Escaliers)/.test(n)) { floors.push(m); for (const b of meshBoxes(m)) { b.isStage = /^Sol_scene/.test(n); floorBoxes.push(b); } continue; }
   solids.push(m);
   for (const b of meshBoxes(m)) { b.mesh = m; solidBoxes.push(b); }
 }
@@ -346,23 +344,148 @@ canvas.addEventListener('pointerup', (e) => {
   if (hit && floors.includes(hit.object)) walkTarget = new THREE.Vector3(hit.point.x, 0, hit.point.z);
 });
 
-// ---------------------------------------------------------------- mini-carte
-const mapc = $('mapc'), mx = mapc.getContext('2d');
-const planImg = new Image(); planImg.src = 'plan.jpg';
-const toMap = (x, z) => [OX + x * 100 * S, OY + z * 100 * S];
-function drawMap() {
-  mx.clearRect(0, 0, 740, 540);
-  if (planImg.complete) mx.drawImage(planImg, 0, 0);
-  const p = mode === 'walk' ? camera.position : controls.target;
-  const [px, py] = toMap(p.x, p.z);
-  const f = new THREE.Vector3(); camera.getWorldDirection(f); const a = Math.atan2(f.z, f.x);
-  mx.fillStyle = 'rgba(224,14,69,.28)'; mx.beginPath(); mx.moveTo(px, py); mx.arc(px, py, 64, a - 0.6, a + 0.6); mx.closePath(); mx.fill();
-  mx.fillStyle = '#E00E45'; mx.beginPath(); mx.arc(px, py, 9, 0, 7); mx.fill(); mx.strokeStyle = '#fff'; mx.lineWidth = 3; mx.stroke();
+// ---------------------------------------------------------------- radar (mini-carte)
+// Dessiné en vecteurs depuis la géométrie chargée : murs (Murs_*), vitrages, sols, mobilier.
+// Balade : centré sur le visiteur, tourne avec son regard. Vue générale : tout le bâtiment, nord en haut.
+const RAD = { css: 0, R: 0, ppm: 24 };
+const mapc = $('mapc'), mx = mapc.getContext('2d'), zoneEl = $('zone');
+const C = { night: '#0F0414', red: '#E00E45', mist: '237,242,247', green: '85,213,159' };
+const base = (() => {
+  const bb = new THREE.Box3(); floorBoxes.forEach((b) => bb.union(b)); bb.expandByScalar(1.5);
+  const ppm = RAD.ppm, W = Math.ceil((bb.max.x - bb.min.x) * ppm), H = Math.ceil((bb.max.z - bb.min.z) * ppm);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  const X = (x) => (x - bb.min.x) * ppm, Z = (z) => (z - bb.min.z) * ppm;
+  const rect = (b) => g.fillRect(X(b.min.x), Z(b.min.z), Math.max(1, (b.max.x - b.min.x) * ppm), Math.max(1, (b.max.z - b.min.z) * ppm));
+  // grille : 1 m discrète, 5 m marquée
+  for (let m = Math.ceil(bb.min.x); m <= bb.max.x; m++) { g.fillStyle = `rgba(${C.mist},${m % 5 ? .035 : .08})`; g.fillRect(X(m), 0, 1, H); }
+  for (let m = Math.ceil(bb.min.z); m <= bb.max.z; m++) { g.fillStyle = `rgba(${C.mist},${m % 5 ? .035 : .08})`; g.fillRect(0, Z(m), W, 1); }
+  for (const b of floorBoxes) { g.fillStyle = b.isStage ? 'rgba(224,14,69,.16)' : `rgba(${C.mist},.07)`; rect(b); }
+  const name = (b) => b.mesh.name;
+  const furn = solidBoxes.filter((b) => !/^(Murs|Vitrages|Rideaux|Plafond|Toiture|Luminaires)/.test(name(b)) && b.max.y < 2.4);
+  g.fillStyle = `rgba(${C.mist},.22)`; furn.forEach(rect);
+  const walls = solidBoxes.filter((b) => /^Murs/.test(name(b)) && b.min.y < 1.2);
+  g.save(); g.shadowColor = 'rgba(224,14,69,.75)'; g.shadowBlur = 7; g.fillStyle = `rgba(${C.mist},.95)`; walls.forEach(rect); g.restore();
+  g.fillStyle = `rgba(${C.mist},.95)`; walls.forEach(rect);
+  g.fillStyle = `rgba(${C.green},.9)`; solidBoxes.filter((b) => /^Vitrages/.test(name(b))).forEach(rect);
+  return { cv, bb, ppm, W, H };
+})();
+const zones = hps.map((h) => { const p = h.node.getWorldPosition(new THREE.Vector3()); return { t: h.title, x: p.x, z: p.z }; });
+function sizeRadar() {
+  const css = mapc.clientWidth || 220, dpr = Math.min(devicePixelRatio || 1, 2);
+  if (css === RAD.css) return; RAD.css = css; mapc.width = mapc.height = Math.round(css * dpr); RAD.R = mapc.width / 2;
 }
-$('map').addEventListener('click', (e) => {
-  const r = mapc.getBoundingClientRect();
-  const cx = (e.clientX - r.left) / r.width * 740, cy = (e.clientY - r.top) / r.height * 540;
-  const x = (cx - OX) / S / 100, z = (cy - OY) / S / 100;
+// repère radar courant : centre (monde), rotation, échelle (px canvas / m)
+function radarFrame() {
+  const R = RAD.R;
+  if (mode === 'walk') return { cx: pos.x, cz: pos.z, rot: yaw, k: R / 11 };          // ~11 m de rayon
+  const w = base.bb.max.x - base.bb.min.x, h = base.bb.max.z - base.bb.min.z;
+  const c = base.bb.getCenter(new THREE.Vector3());
+  return { cx: c.x, cz: c.z, rot: 0, k: (R * 1.86) / Math.hypot(w, h) };
+}
+const toRadar = (f, x, z) => {                       // monde -> pixels canvas (origine au centre)
+  const dx = (x - f.cx) * f.k, dz = (z - f.cz) * f.k, c = Math.cos(f.rot), s = Math.sin(f.rot);
+  return [dx * c - dz * s, dx * s + dz * c];
+};
+const fromRadar = (f, u, v) => {
+  const c = Math.cos(-f.rot), s = Math.sin(-f.rot);
+  return [f.cx + (u * c - v * s) / f.k, f.cz + (u * s + v * c) / f.k];
+};
+function chevron(x, y, ang, sz) {
+  mx.save(); mx.translate(x, y); mx.rotate(ang);
+  mx.beginPath(); mx.moveTo(0, -sz); mx.lineTo(sz * 0.72, sz * 0.75); mx.lineTo(0, sz * 0.32); mx.lineTo(-sz * 0.72, sz * 0.75); mx.closePath();
+  mx.fillStyle = C.red; mx.shadowColor = 'rgba(224,14,69,.9)'; mx.shadowBlur = sz; mx.fill();
+  mx.shadowBlur = 0; mx.lineWidth = sz * 0.18; mx.strokeStyle = '#fff'; mx.stroke(); mx.restore();
+}
+let zoneName = '', zoneTick = -1e9;
+function drawMap(t) {
+  sizeRadar();
+  const R = RAD.R, D = R * 2, f = radarFrame(), u = R / 110;
+  mx.setTransform(1, 0, 0, 1, 0, 0); mx.clearRect(0, 0, D, D);
+  // fond
+  const bg = mx.createRadialGradient(R, R, R * 0.1, R, R, R);
+  bg.addColorStop(0, 'rgba(32,10,40,.94)'); bg.addColorStop(1, 'rgba(15,4,20,.96)');
+  mx.beginPath(); mx.arc(R, R, R - 1, 0, 7); mx.fillStyle = bg; mx.fill();
+  mx.save(); mx.beginPath(); mx.arc(R, R, R - 6 * u, 0, 7); mx.clip();
+  // carte
+  mx.save(); mx.translate(R, R); mx.rotate(f.rot); mx.scale(f.k / base.ppm, f.k / base.ppm);
+  mx.translate(-(f.cx - base.bb.min.x) * base.ppm, -(f.cz - base.bb.min.z) * base.ppm);
+  mx.drawImage(base.cv, 0, 0); mx.restore();
+  // balayage radar
+  const sweep = (t / 2600) % 1 * Math.PI * 2;
+  if (mx.createConicGradient) {
+    const cg = mx.createConicGradient(sweep, R, R);
+    cg.addColorStop(0, 'rgba(224,14,69,.22)'); cg.addColorStop(0.12, 'rgba(224,14,69,0)'); cg.addColorStop(1, 'rgba(224,14,69,0)');
+    mx.fillStyle = cg; mx.fillRect(0, 0, D, D);
+  }
+  // anneaux de distance
+  mx.strokeStyle = `rgba(${C.mist},.07)`; mx.lineWidth = u;
+  for (const k of [0.33, 0.66]) { mx.beginPath(); mx.arc(R, R, R * k, 0, 7); mx.stroke(); }
+  // noms de zones
+  mx.font = `800 ${Math.round(8.5 * u)}px Archivo, sans-serif`; mx.textAlign = 'center'; mx.textBaseline = 'middle';
+  for (const z of mode === 'walk' ? zones : []) {
+    const [x, y] = toRadar(f, z.x, z.z);
+    if (Math.hypot(x, y) > R * 0.82) continue;
+    mx.fillStyle = `rgba(${C.mist},.55)`; mx.fillText(z.t.toUpperCase(), R + x, R + y + 10 * u);
+  }
+  // visiteur / caméra
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+  let px = R, py = R, ang = 0;
+  if (mode === 'walk') { ang = 0; }
+  else { const [x, y] = toRadar(f, controls.target.x, controls.target.z); px = R + x; py = R + y; ang = Math.atan2(dir.x, -dir.z); }
+  const coneAng = ang - Math.PI / 2, cone = mx.createRadialGradient(px, py, 0, px, py, R * 0.55);
+  cone.addColorStop(0, 'rgba(224,14,69,.45)'); cone.addColorStop(1, 'rgba(224,14,69,0)');
+  mx.beginPath(); mx.moveTo(px, py); mx.arc(px, py, R * 0.55, coneAng - 0.55, coneAng + 0.55); mx.closePath(); mx.fillStyle = cone; mx.fill();
+  const pulse = (t / 1200) % 1;
+  mx.beginPath(); mx.arc(px, py, (6 + pulse * 16) * u, 0, 7); mx.strokeStyle = `rgba(224,14,69,${0.6 * (1 - pulse)})`; mx.lineWidth = 1.5 * u; mx.stroke();
+  chevron(px, py, ang, 8 * u);
+  mx.restore();
+  // couronne : graduations + nord
+  mx.save(); mx.translate(R, R);
+  mx.beginPath(); mx.arc(0, 0, R - 3 * u, 0, 7); mx.strokeStyle = `rgba(${C.mist},.18)`; mx.lineWidth = 1.2 * u; mx.stroke();
+  mx.rotate(f.rot);
+  for (let i = 0; i < 72; i++) {
+    const a = i / 72 * Math.PI * 2, L = i % 18 === 0 ? 7 : i % 6 === 0 ? 4.5 : 2.5;
+    mx.beginPath(); mx.moveTo(Math.sin(a) * (R - 3 * u), -Math.cos(a) * (R - 3 * u)); mx.lineTo(Math.sin(a) * (R - (3 + L) * u), -Math.cos(a) * (R - (3 + L) * u));
+    mx.strokeStyle = i % 18 === 0 ? C.red : `rgba(${C.mist},.35)`; mx.lineWidth = (i % 18 === 0 ? 2 : 1) * u; mx.stroke();
+  }
+  mx.fillStyle = C.red; mx.font = `800 ${Math.round(11 * u)}px Archivo, sans-serif`; mx.textAlign = 'center'; mx.textBaseline = 'middle';
+  mx.fillText('N', 0, -(R - 17 * u));
+  mx.restore();
+  mx.beginPath(); mx.arc(R, R, R - 0.8 * u, 0, 7); mx.strokeStyle = 'rgba(224,14,69,.85)'; mx.lineWidth = 1.6 * u; mx.stroke();
+  // zone courante (recalculée 4 fois par seconde)
+  if (t - zoneTick > 250) {
+    zoneTick = t;
+    const ref = mode === 'walk' ? pos : controls.target;
+    const zn = zoneAt(ref.x, ref.z);
+    if (zn !== zoneName) { zoneName = zn; zoneEl.textContent = zn; }
+  }
+}
+// pièce = point d'intérêt le plus proche sans mur entre les deux (repli : le plus proche)
+const wallBoxes = solidBoxes.filter((b) => /^Murs/.test(b.mesh.name) && b.min.y < 1.2 && b.max.y > 1.2);
+function segHitsBox(x0, z0, x1, z1, b) {
+  let t0 = 0, t1 = 1;
+  for (const [p, d, lo, hi] of [[x0, x1 - x0, b.min.x, b.max.x], [z0, z1 - z0, b.min.z, b.max.z]]) {
+    if (Math.abs(d) < 1e-9) { if (p < lo || p > hi) return false; continue; }
+    let a = (lo - p) / d, c = (hi - p) / d; if (a > c) [a, c] = [c, a];
+    t0 = Math.max(t0, a); t1 = Math.min(t1, c); if (t0 > t1) return false;
+  }
+  return true;
+}
+function zoneAt(x, z) {
+  let best = null, bd = 1e9, near = null, nd = 1e9;
+  for (const q of zones) {
+    const d = Math.hypot(q.x - x, q.z - z);
+    if (d < nd) { nd = d; near = q; }
+    if (d < bd && !wallBoxes.some((b) => segHitsBox(x, z, q.x, q.z, b))) { bd = d; best = q; }
+  }
+  return (best ?? near)?.t ?? '';
+}
+mapc.addEventListener('click', (e) => {
+  const r = mapc.getBoundingClientRect(), dpr = mapc.width / r.width;
+  const u = (e.clientX - r.left) * dpr - RAD.R, v = (e.clientY - r.top) * dpr - RAD.R;
+  if (Math.hypot(u, v) > RAD.R * 0.95) return;
+  const [x, z] = fromRadar(radarFrame(), u, v);
   if (mode === 'orbit') {
     lastPick = { x, z };
     const t = new THREE.Vector3(x, 0, z);
@@ -417,7 +540,7 @@ renderer.setAnimationLoop((t) => {
   }
   updateHotspots(t);
   stage.update(dt);
-  drawMap();
+  drawMap(t);
   renderer.render(stage.scene, camera);
 });
 setMode('orbit');

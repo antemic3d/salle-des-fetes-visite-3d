@@ -44,19 +44,20 @@ header>*{pointer-events:auto}
 #help b{color:var(--white);font-weight:800;text-transform:uppercase;letter-spacing:.03em}
 
 /* pièces */
-#rooms{position:fixed;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100% - 310px);z-index:3}
+#rooms{position:fixed;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100% - 270px);z-index:3}
 #rooms button{border:1px solid var(--line);background:var(--panel);color:var(--mist);padding:8px 12px;border-radius:var(--r);
   font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:border-color .15s,background .15s}
 #rooms button:hover{border-color:var(--red);color:var(--white)}
 #rooms button:active{background:var(--red)}
 
-/* plan */
-#map{position:fixed;right:12px;bottom:12px;width:280px;padding:8px;cursor:crosshair;z-index:3}
-#map .head{display:flex;justify-content:space-between;align-items:baseline;margin:0 2px 6px}
-#map .head a{color:var(--muted);font-size:10px;text-decoration:none;text-transform:uppercase;letter-spacing:.06em}
-#map .head a:hover{color:var(--red)}
-#map canvas{width:100%;display:block;border-radius:2px;background:#fff}
+/* radar */
+#map{position:fixed;right:16px;bottom:14px;width:224px;display:flex;flex-direction:column;align-items:center;gap:8px;z-index:3}
+#mapc{width:224px;height:224px;display:block;border-radius:50%;cursor:crosshair;filter:drop-shadow(0 10px 26px rgba(15,4,20,.55))}
+#map .zone{display:flex;align-items:center;gap:8px;padding:6px 12px;font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap}
+#map .zone .tag{font-size:10px}
+#map .credit{color:var(--muted);font-size:9.5px;text-decoration:none;text-transform:uppercase;letter-spacing:.08em;text-shadow:0 1px 4px rgba(15,4,20,.8)}
+#map .credit:hover{color:var(--red)}
 
 /* étiquettes 3D */
 #hotspots{position:fixed;inset:0;pointer-events:none;z-index:2}
@@ -86,8 +87,9 @@ header>*{pointer-events:auto}
 
 @media (max-width:720px){
   header{flex-wrap:nowrap}
-  #map{width:156px;padding:6px} #map .head{display:none}
-  #rooms{max-width:calc(100% - 182px);flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  #map{width:132px;right:10px;bottom:10px;gap:6px} #mapc{width:132px;height:132px} #map .credit{display:none}
+  #map .zone{font-size:9.5px;padding:4px 8px} #map .zone .tag{display:none}
+  #rooms{max-width:calc(100% - 158px);flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
   #rooms::-webkit-scrollbar{display:none}
   #rooms button{padding:8px 10px;font-size:10.5px;flex:0 0 auto}
   #help{display:none}
@@ -123,9 +125,10 @@ header>*{pointer-events:auto}
 <aside id="card" class="glass" hidden><button class="close" aria-label="Fermer">×</button><span class="tag">Pièce</span><h2></h2><p></p></aside>
 <div id="cross" hidden></div>
 <div id="rooms"></div>
-<div id="map" class="glass" title="Cliquez pour vous déplacer">
-  <div class="head"><span class="tag">Plan</span><a href="https://www.antemic.fr" target="_blank" rel="noopener">Réalisé par Antemic</a></div>
-  <canvas id="mapc" width="740" height="540"></canvas>
+<div id="map">
+  <canvas id="mapc" width="448" height="448" title="Cliquez pour vous déplacer"></canvas>
+  <div class="zone glass"><span class="tag">Zone</span><span id="zone"></span></div>
+  <a class="credit" href="https://www.antemic.fr" target="_blank" rel="noopener">Réalisé par Antemic</a>
 </div>
 <script type="module" src="app.js"></script>
 </body>

@@ -3,7 +3,7 @@
 Visionneuse web de la salle des fêtes, modélisée dans Blender d'après le plan et exportée avec l'add-on « Aperçu three.js ».
 
 - **Vue générale** : maquette sans plafond, fiches des pièces.
-- **Balade** : visite à hauteur d'œil, murs et mobilier infranchissables, mini-carte cliquable.
+- **Balade** : visite à hauteur d'œil, murs et mobilier infranchissables, radar de navigation cliquable.
 
 ## Fichiers
 
@@ -14,7 +14,7 @@ Visionneuse web de la salle des fêtes, modélisée dans Blender d'après le pla
 | `core/product-loader.js` | module de référence de l'add-on (inchangé) |
 | `salle_des_fetes.glb` | scène exportée depuis Blender (« Exporter le GLB final ») |
 | `version.txt` | identifiant de la dernière publication (anti-cache) |
-| `plan.jpg` | plan utilisé par la mini-carte |
+| `plan.jpg` | plan d'origine (le radar est dessiné depuis la géométrie) |
 
 ## Mettre à jour la scène
 
