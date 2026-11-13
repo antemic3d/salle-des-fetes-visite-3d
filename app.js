@@ -150,7 +150,15 @@ stage.scene.traverse((o) => {
 for (const m of stage.meshes) {
   const n = m.userData.name ?? m.parent?.userData?.name ?? m.name;
   if (/^(Plafond|Luminaires|Toiture)/.test(n)) { hide.orbit.push(m); continue; }
-  if (/^(Sol_|Escaliers)/.test(n)) { floors.push(m); for (const b of meshBoxes(m)) { b.isStage = /^Sol_scene/.test(n); floorBoxes.push(b); } continue; }
+  if (/^(Sol_|Escaliers)/.test(n)) {
+    floors.push(m);
+    for (const b of meshBoxes(m)) {
+      // +2 cm à l'horizontale : referme les joints entre sols voisins (arrondis de la compression Draco)
+      b.min.x -= 0.02; b.max.x += 0.02; b.min.z -= 0.02; b.max.z += 0.02;
+      b.isStage = /^Sol_scene/.test(n); floorBoxes.push(b);
+    }
+    continue;
+  }
   solids.push(m);
   for (const b of meshBoxes(m)) { b.mesh = m; solidBoxes.push(b); }
 }
@@ -300,8 +308,11 @@ function tryMove(dx, dz) {
     const c = Math.cos(a), s = Math.sin(a);
     tries.push([dx * c - dz * s, dx * s + dz * c]);
   }
-  for (const [mx, mz] of tries) {
-    if (!mx && !mz) continue;
+  const want = Math.hypot(dx, dz);
+  for (let [mx, mz] of tries) {
+    if (Math.abs(mx) < 1e-9) mx = 0;
+    if (Math.abs(mz) < 1e-9) mz = 0;
+    if (Math.hypot(mx, mz) < want * 0.2) continue;   // glissement trop court : pas une vraie avancée
     const nx = pos.x + mx, nz = pos.z + mz;
     const fy = floorAt(nx, nz);
     if (fy === null || Math.abs(fy - feet) > STEP_UP) continue;   // bord de scène : seulement par les escaliers
@@ -571,4 +582,4 @@ setMode('orbit');
 // shaders compilés en arrière-plan avant le premier affichage (pas de gel à l'apparition)
 try { await renderer.compileAsync(stage.scene, camera); } catch {}
 $('load').remove();
-window.__viewer = { look(p) { pitch = p; applyCam(); }, get baked() { return baked; }, lmMode: LM_MODE, stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };
+window.__viewer = { look(p) { pitch = p; applyCam(); }, get baked() { return baked; }, lmMode: LM_MODE, stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, floorAt, clearAt, get feet() { return feet; }, setMode };
