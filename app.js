@@ -14,7 +14,8 @@ const SUBSTEP = 0.08;      // déplacement max par sous-pas (anti-traversée)
 
 const canvas = document.getElementById('view');
 const renderer = createRenderer(canvas);
-const stage = new ProductStage(renderer);
+// décodeur Draco (géométrie compressée par l'add-on Publication GitHub) servi par le CDN de three.js
+const stage = new ProductStage(renderer, { dracoPath: 'https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/libs/draco/gltf/' });
 const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 400);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
@@ -27,9 +28,9 @@ let mode = 'orbit', initial = null;
 const hide = { orbit: [], always: [] }; // objets masqués en vue générale
 let solids = [], floors = [];
 const solidBoxes = [], floorBoxes = [];
-// La salle est faite de boîtes alignées sur les axes : l'export glTF garde
-// 12 triangles consécutifs par boîte. On en tire des AABB exactes pour les collisions.
-// Si un maillage n'est pas fait de boîtes (modèle retouché), on prend sa boîte englobante par triangle.
+// Collisions : la salle est faite de boîtes alignées sur les axes. Sans compression, l'export glTF garde
+// 12 triangles consécutifs par boîte -> AABB exactes. Avec Draco (triangles réordonnés) ou un maillage libre :
+// une boîte englobante pour un petit objet, sinon une plaque par triangle (exacte, les ouvertures restent libres).
 function meshBoxes(mesh) {
   mesh.updateWorldMatrix(true, false);
   const g = mesh.geometry, p = g.attributes.position, idx = g.index;
@@ -57,9 +58,19 @@ function decorOrTri(mesh) {
   return meshBoxesTri(mesh);
 }
 function meshBoxesTri(mesh) {
-  // grand maillage libre (ex. plantes réalisées) : triangles regroupés par cellules de 50 cm
   const g = mesh.geometry, p = g.attributes.position, idx = g.index, n = idx ? idx.count : p.count;
   const v = new THREE.Vector3(), c = new THREE.Vector3(), cells = new Map();
+  if (n / 3 <= 20000) {
+    // plaque par triangle, épaissie de 1 cm : exacte pour murs, sols, mobilier
+    const out = [];
+    for (let k = 0; k < n; k += 3) {
+      const tb = new THREE.Box3();
+      for (let j = k; j < k + 3; j++) { v.fromBufferAttribute(p, idx ? idx.getX(j) : j).applyMatrix4(mesh.matrixWorld); tb.expandByPoint(v); }
+      out.push(tb.expandByScalar(0.005));
+    }
+    return out;
+  }
+  // très grand maillage libre : triangles regroupés par cellules de 50 cm
   for (let k = 0; k < n; k += 3) {
     const tb = new THREE.Box3();
     for (let j = k; j < k + 3; j++) { v.fromBufferAttribute(p, idx ? idx.getX(j) : j).applyMatrix4(mesh.matrixWorld); tb.expandByPoint(v); }
@@ -80,13 +91,17 @@ addEventListener('resize', resize); resize();
 
 // ---------------------------------------------------------------- chargement
 try {
-  // version.txt est réécrit à chaque publication depuis Blender : il force le rechargement du GLB
-  // (sinon navigateur et GitHub Pages peuvent servir l'ancien fichier pendant ~10 min)
-  let v = '';
-  try { v = (await fetch('version.txt', { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''))).trim(); } catch {}
-  await stage.load('salle_des_fetes.glb' + (v ? '?v=' + encodeURIComponent(v) : ''));
+  // le GLB est déjà en téléchargement depuis index.html (en parallèle de three.js)
+  const buf = window.__glb ? await window.__glb : null;
+  $('loadmsg').textContent = 'Préparation de la visite';
+  if (buf) await stage.load(buf);
+  else {
+    let v = '';
+    try { v = (await fetch('version.txt', { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''))).trim(); } catch {}
+    await stage.load('salle_des_fetes.glb' + (v ? '?v=' + encodeURIComponent(v) : ''));
+  }
 } catch (e) {
-  $('load').textContent = 'Erreur de chargement : ' + e.message; throw e;
+  $('loadmsg').textContent = 'Erreur de chargement : ' + e.message; throw e;
 }
 initial = stage.applyInitialView(camera, controls);
 camera.far = 400; camera.near = 0.3; camera.updateProjectionMatrix();
@@ -553,5 +568,7 @@ renderer.setAnimationLoop((t) => {
   renderer.render(stage.scene, camera);
 });
 setMode('orbit');
+// shaders compilés en arrière-plan avant le premier affichage (pas de gel à l'apparition)
+try { await renderer.compileAsync(stage.scene, camera); } catch {}
 $('load').remove();
 window.__viewer = { look(p) { pitch = p; applyCam(); }, get baked() { return baked; }, lmMode: LM_MODE, stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, get feet() { return feet; }, setMode };

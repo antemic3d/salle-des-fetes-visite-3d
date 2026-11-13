@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Salle des fêtes – Visite virtuelle 3D · ANTEMIC</title>
 <link rel="icon" type="image/webp" href="assets/antemic-croix.webp">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.core.js">
+<link rel="modulepreload" href="core/product-loader.js">
+<link rel="modulepreload" href="app.js">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;600;800&display=swap" rel="stylesheet">
@@ -82,6 +87,8 @@ header>*{pointer-events:auto}
 #load img{width:220px;height:auto}
 #load .bar{width:220px;height:3px;background:rgba(255,255,255,.12);overflow:hidden;border-radius:2px}
 #load .bar::after{content:"";display:block;width:40%;height:100%;background:var(--red);animation:slide 1.1s ease-in-out infinite}
+#load .bar i{display:none;height:100%;width:0;background:var(--red);transition:width .15s}
+#load .bar.det::after{display:none} #load .bar.det i{display:block}
 #load .msg{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
 @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
 
@@ -109,9 +116,36 @@ header>*{pointer-events:auto}
 <canvas id="view" tabindex="0"></canvas>
 <div id="load">
   <img src="assets/antemic-logo.webp" alt="ANTEMIC">
-  <div class="bar"></div>
-  <div class="msg">Chargement de la salle</div>
+  <div class="bar"><i id="loadbar"></i></div>
+  <div class="msg" id="loadmsg">Chargement de la salle</div>
 </div>
+<script>
+// Téléchargement du GLB lancé tout de suite, en parallèle de three.js, avec progression réelle.
+// version.txt (réécrit à chaque publication depuis Blender) force la bonne version malgré les caches.
+window.__glb = (async () => {
+  let v = '';
+  try { v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim(); } catch (e) {}
+  const r = await fetch('salle_des_fetes.glb' + (v ? '?v=' + encodeURIComponent(v) : ''));
+  if (!r.ok) throw new Error('GLB ' + r.status);
+  const total = +r.headers.get('content-length') || 0;
+  if (!r.body || !total) return r.arrayBuffer();
+  const reader = r.body.getReader(), parts = []; let got = 0;
+  const bar = document.getElementById('loadbar'), msg = document.getElementById('loadmsg');
+  bar.parentNode.classList.add('det');
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value); got += value.length;
+    const pc = Math.min(100, got / total * 100);
+    bar.style.width = pc + '%';
+    msg.textContent = 'Chargement ' + Math.round(pc) + ' % · ' + (got / 1e6).toFixed(1) + ' / ' + (total / 1e6).toFixed(1) + ' Mo';
+  }
+  const out = new Uint8Array(got); let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out.buffer;
+})();
+window.__glb.catch(() => {});
+</script>
 <header>
   <a class="brand glass" href="https://www.antemic.fr" target="_blank" rel="noopener" title="ANTEMIC – studio 3D">
     <img src="assets/antemic-logo.webp" alt="ANTEMIC">
