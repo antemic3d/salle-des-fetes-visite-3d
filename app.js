@@ -123,6 +123,16 @@ stage.root.traverse((o) => { if (o.userData?.lm_mode && !lmInfo) lmInfo = o.user
 const LM_MODE = lmInfo?.lm_mode ?? 'AO';
 const LM_SCALE = Number(lmInfo?.lm_scale ?? 1).toFixed(6);
 const LM_GAMMA = Number(lmInfo?.lm_gamma ?? 2.2).toFixed(4);
+// En mode LIGHT, les lampes temps réel (15 RectAreaLight + spots) ne servent plus qu'aux reflets et aux murs
+// non cuits, mais chaque shader les compile toutes (plusieurs secondes au chargement). On les retire et on
+// éclaire les surfaces non cuites par une ambiance unique, calibrée pour garder la même luminosité.
+const WALL_FILL = Number(new URLSearchParams(location.search).get('fill') ?? 0.8);   // ?fill=… pour ajuster
+if (LM_MODE === 'LIGHT' && WALL_FILL >= 0) {
+  const drop = [];
+  stage.scene.traverse((o) => { if (o.isRectAreaLight || o.isSpotLight || o.isPointLight) drop.push(o); });
+  drop.forEach((o) => o.removeFromParent());
+  if (WALL_FILL > 0) stage.scene.add(new THREE.HemisphereLight(0xfff0dc, 0xd2c4b0, WALL_FILL));
+}
 let baked = 0;
 stage.scene.traverse((o) => {
   if (!o.isMesh) return;
@@ -588,4 +598,4 @@ performance.mark('visite:avant-shaders');
 try { await renderer.compileAsync(stage.scene, camera); } catch {}
 performance.mark('visite:pret');
 $('load').remove();
-window.__viewer = { look(p) { pitch = p; applyCam(); }, get baked() { return baked; }, lmMode: LM_MODE, stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, floorAt, clearAt, get feet() { return feet; }, setMode };
+window.__viewer = { renderer, look(p) { pitch = p; applyCam(); }, get baked() { return baked; }, lmMode: LM_MODE, stage, solidBoxes, floorBoxes, camera, pos, move, placeAt, findFree, floorAt, clearAt, get feet() { return feet; }, setMode };
